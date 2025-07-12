@@ -29,7 +29,8 @@ router.get('/stats', async (req, res) => {
       totalSwaps,
       completedSwaps,
       pendingSwaps,
-      totalPoints
+      totalPoints,
+      pointsStats
     ] = await Promise.all([
       User.countDocuments(),
       User.countDocuments({ status: 'active' }),
@@ -43,6 +44,17 @@ router.get('/stats', async (req, res) => {
       Swap.countDocuments({ status: 'pending' }),
       User.aggregate([
         { $group: { _id: null, total: { $sum: '$points' } } }
+      ]),
+      User.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalEarned: { $sum: '$stats.totalPointsEarned' },
+            totalSpent: { $sum: '$stats.totalPointsSpent' },
+            avgPointsPerUser: { $avg: '$points' },
+            maxPoints: { $max: '$points' }
+          }
+        }
       ])
     ]);
 
@@ -79,7 +91,11 @@ router.get('/stats', async (req, res) => {
             pending: pendingSwaps
           },
           points: {
-            total: totalPoints[0]?.total || 0
+            total: totalPoints[0]?.total || 0,
+            totalEarned: pointsStats[0]?.totalEarned || 0,
+            totalSpent: pointsStats[0]?.totalSpent || 0,
+            avgPerUser: Math.round(pointsStats[0]?.avgPointsPerUser || 0),
+            maxPoints: pointsStats[0]?.maxPoints || 0
           }
         },
         recentActivity: {

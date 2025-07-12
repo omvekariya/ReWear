@@ -14,7 +14,9 @@ const swapSchema = new mongoose.Schema({
   initiatorItem: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Item',
-    required: true
+    required: function() {
+      return this.type === 'swap'; // Only required for swap type, not redeem
+    }
   },
   recipientItem: {
     type: mongoose.Schema.Types.ObjectId,

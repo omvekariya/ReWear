@@ -205,12 +205,28 @@ itemSchema.methods.incrementViews = function() {
 // Instance method to toggle like
 itemSchema.methods.toggleLike = function(userId) {
   const likeIndex = this.likes.indexOf(userId);
-  if (likeIndex > -1) {
+  const wasLiked = likeIndex > -1;
+  
+  if (wasLiked) {
     this.likes.splice(likeIndex, 1);
   } else {
     this.likes.push(userId);
   }
-  return this.save();
+  
+  return this.save().then(async (savedItem) => {
+    // Award points to item owner when someone likes their item
+    if (!wasLiked) {
+      const User = mongoose.model('User');
+      const likeBonus = 2; // Points for receiving a like
+      await User.findByIdAndUpdate(this.owner, {
+        $inc: { 
+          points: likeBonus,
+          'stats.totalPointsEarned': likeBonus
+        }
+      });
+    }
+    return savedItem;
+  });
 };
 
 // Instance method to add report

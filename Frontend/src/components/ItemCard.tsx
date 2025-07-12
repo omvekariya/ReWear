@@ -156,10 +156,10 @@ export const ItemCard = ({ item, showActions = true }: ItemCardProps) => {
               variant="default" 
               size="sm" 
               className="flex-1"
-              onClick={handleSwap}
+              onClick={() => navigate(`/buy/${item._id}`)}
             >
               <Coins className="h-4 w-4 mr-1" />
-              Redeem
+              Buy
             </Button>
           )}
         </CardFooter>

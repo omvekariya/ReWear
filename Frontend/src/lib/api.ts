@@ -263,6 +263,12 @@ class ApiClient {
     });
   }
 
+  async buyWithPoints(id: string) {
+    return this.request<{ purchase: Swap; pointsSpent: number; bonusEarned: number }>(`/items/${id}/buy`, {
+      method: 'POST',
+    });
+  }
+
   async reportItem(id: string, reportData: { reason: string; description: string }) {
     return this.request(`/items/${id}/report`, {
       method: 'POST',
@@ -294,7 +300,7 @@ class ApiClient {
       });
     }
 
-    return this.request<PaginatedResponse<Swap>>(`/swaps?${searchParams}`);
+    return this.request<{ swaps: Swap[]; pagination: PaginatedResponse<Swap>['pagination'] }>(`/swaps?${searchParams}`);
   }
 
   async getPendingSwaps() {
@@ -480,7 +486,7 @@ class ApiClient {
       });
     }
 
-    return this.request<PaginatedResponse<User>>(`/admin/users?${searchParams}`);
+    return this.request<{ users: User[]; pagination: PaginatedResponse<User>['pagination'] }>(`/admin/users?${searchParams}`);
   }
 
   async updateUserStatus(userId: string, status: string) {
@@ -544,7 +550,7 @@ class ApiClient {
       });
     }
 
-    return this.request<PaginatedResponse<Swap>>(`/admin/swaps?${searchParams}`);
+    return this.request<{ swaps: Swap[]; pagination: PaginatedResponse<Swap>['pagination'] }>(`/admin/swaps?${searchParams}`);
   }
 
   async getDisputes() {

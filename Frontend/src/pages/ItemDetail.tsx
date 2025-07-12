@@ -130,6 +130,18 @@ export const ItemDetail = () => {
     navigate(`/redeem/${item!._id}`);
   };
 
+  const handleBuyWithPoints = () => {
+    if (!user) {
+      toast({
+        title: "Please login",
+        description: "You need to be logged in to buy items",
+        variant: "destructive",
+      });
+      return;
+    }
+    navigate(`/buy/${item!._id}`);
+  };
+
   const nextImage = () => {
     if (item?.images) {
       setCurrentImageIndex((prev) => (prev + 1) % item.images.length);
@@ -398,9 +410,9 @@ export const ItemDetail = () => {
                 </Button>
               )}
               {item.isRedeemable && item.status === 'active' && (
-                <Button variant="default" size="lg" className="flex-1" onClick={handleRedeem}>
+                <Button variant="default" size="lg" className="flex-1" onClick={handleBuyWithPoints}>
                   <Coins className="h-4 w-4 mr-2" />
-                  Redeem with Points
+                  Buy with Points
                 </Button>
               )}
             </div>

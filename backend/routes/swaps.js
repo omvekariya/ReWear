@@ -44,11 +44,17 @@ router.get('/', protect, [
     const swaps = await Swap.find(query)
       .populate('initiator', 'name avatar')
       .populate('recipient', 'name avatar')
-      .populate('initiatorItem', 'title images points')
       .populate('recipientItem', 'title images points')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
+    
+    // Populate initiatorItem for swaps that have it
+    for (const swap of swaps) {
+      if (swap.initiatorItem) {
+        await swap.populate('initiatorItem', 'title images points');
+      }
+    }
 
     const total = await Swap.countDocuments(query);
 
@@ -102,8 +108,12 @@ router.get('/:id', protect, async (req, res) => {
     const swap = await Swap.findById(req.params.id)
       .populate('initiator', 'name avatar email')
       .populate('recipient', 'name avatar email')
-      .populate('initiatorItem', 'title images points description')
       .populate('recipientItem', 'title images points description');
+    
+    // Only populate initiatorItem if it exists
+    if (swap?.initiatorItem) {
+      await swap.populate('initiatorItem', 'title images points description');
+    }
 
     if (!swap) {
       return res.status(404).json({
@@ -267,12 +277,18 @@ router.post('/', protect, [
     const swap = await Swap.create(swapData);
 
     // Populate the swap for response
-    await swap.populate([
+    const populatePaths = [
       { path: 'initiator', select: 'name avatar' },
       { path: 'recipient', select: 'name avatar' },
-      { path: 'initiatorItem', select: 'title images points' },
       { path: 'recipientItem', select: 'title images points' }
-    ]);
+    ];
+    
+    // Only populate initiatorItem if it exists (for swap type)
+    if (swap.initiatorItem) {
+      populatePaths.push({ path: 'initiatorItem', select: 'title images points' });
+    }
+    
+    await swap.populate(populatePaths);
 
     res.status(201).json({
       success: true,
@@ -318,7 +334,7 @@ router.put('/:id/accept', protect, async (req, res) => {
       await Item.findByIdAndUpdate(swap.initiatorItem, { status: 'sold' });
     }
 
-    // Handle points for redeem
+    // Handle points for both swap types
     if (swap.type === 'redeem') {
       // Deduct points from initiator
       await User.findByIdAndUpdate(swap.initiator, {
@@ -333,6 +349,29 @@ router.put('/:id/accept', protect, async (req, res) => {
         $inc: { 
           points: swap.points,
           'stats.totalPointsEarned': swap.points
+        }
+      });
+    } else {
+      // For item swaps, credit points to both parties for successful completion
+      // Fetch the actual item documents to get their points values
+      const recipientItemDoc = await Item.findById(swap.recipientItem);
+      const initiatorItemDoc = swap.initiatorItem ? await Item.findById(swap.initiatorItem) : null;
+      
+      const recipientPoints = recipientItemDoc?.points || 0;
+      const initiatorPoints = initiatorItemDoc?.points || 0;
+      const pointsCredit = Math.floor((recipientPoints + initiatorPoints) / 4); // 25% of total item value
+      
+      await User.findByIdAndUpdate(swap.initiator, {
+        $inc: { 
+          points: pointsCredit,
+          'stats.totalPointsEarned': pointsCredit
+        }
+      });
+
+      await User.findByIdAndUpdate(swap.recipient, {
+        $inc: { 
+          points: pointsCredit,
+          'stats.totalPointsEarned': pointsCredit
         }
       });
     }
@@ -472,12 +511,42 @@ router.put('/:id/receive', protect, async (req, res) => {
 
     // Update user stats if swap is completed
     if (swap.status === 'completed') {
+      // Award completion bonus points
+      const completionBonus = 20; // Points for successful swap completion
+      
+      // Check if this is the user's first swap
+      const initiatorSwapCount = await Swap.countDocuments({ 
+        $or: [{ initiator: swap.initiator }, { recipient: swap.initiator }],
+        status: 'completed'
+      });
+      const recipientSwapCount = await Swap.countDocuments({ 
+        $or: [{ initiator: swap.recipient }, { recipient: swap.recipient }],
+        status: 'completed'
+      });
+      
+      const firstSwapBonus = 50; // Bonus for first swap
+      
       await User.findByIdAndUpdate(swap.initiator, {
-        $inc: { 'stats.swapsCompleted': 1 }
+        $inc: { 
+          'stats.swapsCompleted': 1,
+          points: completionBonus + (initiatorSwapCount === 1 ? firstSwapBonus : 0),
+          'stats.totalPointsEarned': completionBonus + (initiatorSwapCount === 1 ? firstSwapBonus : 0)
+        }
       });
       await User.findByIdAndUpdate(swap.recipient, {
-        $inc: { 'stats.swapsCompleted': 1 }
+        $inc: { 
+          'stats.swapsCompleted': 1,
+          points: completionBonus + (recipientSwapCount === 1 ? firstSwapBonus : 0),
+          'stats.totalPointsEarned': completionBonus + (recipientSwapCount === 1 ? firstSwapBonus : 0)
+        }
       });
+
+      // Check for milestones for both users
+      const initiator = await User.findById(swap.initiator);
+      const recipient = await User.findById(swap.recipient);
+      
+      if (initiator) await initiator.checkMilestones();
+      if (recipient) await recipient.checkMilestones();
     }
 
     res.json({

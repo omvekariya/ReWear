@@ -53,9 +53,9 @@ export const Admin = () => {
       ]);
 
       setAdminStats(statsResponse.data);
-      setUsers(usersResponse.data.items || []);
+      setUsers(usersResponse.data.users || []);
       setItems(itemsResponse.data.items || []);
-      setSwaps(swapsResponse.data.items || []);
+      setSwaps(swapsResponse.data.swaps || []);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -186,8 +186,11 @@ export const Admin = () => {
                   <Users className="h-6 w-6 text-blue-600" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold">{adminStats?.totalUsers || 0}</div>
+                  <div className="text-2xl font-bold">{adminStats?.stats?.users?.total || 0}</div>
                   <div className="text-muted-foreground">Total Users</div>
+                  <div className="text-xs text-green-600">
+                    {adminStats?.stats?.users?.active || 0} active, {adminStats?.stats?.users?.pending || 0} pending
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -200,8 +203,11 @@ export const Admin = () => {
                   <Package className="h-6 w-6 text-green-600" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold">{adminStats?.totalItems || 0}</div>
-                  <div className="text-muted-foreground">Active Listings</div>
+                  <div className="text-2xl font-bold">{adminStats?.stats?.items?.total || 0}</div>
+                  <div className="text-muted-foreground">Total Items</div>
+                  <div className="text-xs text-green-600">
+                    {adminStats?.stats?.items?.active || 0} active, {adminStats?.stats?.items?.pending || 0} pending
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -214,8 +220,11 @@ export const Admin = () => {
                   <ShoppingCart className="h-6 w-6 text-purple-600" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold">{adminStats?.totalSwaps || 0}</div>
+                  <div className="text-2xl font-bold">{adminStats?.stats?.swaps?.total || 0}</div>
                   <div className="text-muted-foreground">Total Swaps</div>
+                  <div className="text-xs text-green-600">
+                    {adminStats?.stats?.swaps?.completed || 0} completed, {adminStats?.stats?.swaps?.pending || 0} pending
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -225,16 +234,57 @@ export const Admin = () => {
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
                 <div className="bg-orange-100 rounded-full p-3">
-                  <AlertTriangle className="h-6 w-6 text-orange-600" />
+                  <TrendingUp className="h-6 w-6 text-orange-600" />
                 </div>
                 <div>
-                  <div className="text-2xl font-bold">{adminStats?.pendingReviews || 0}</div>
-                  <div className="text-muted-foreground">Pending Reviews</div>
+                  <div className="text-2xl font-bold">{adminStats?.stats?.points?.total || 0}</div>
+                  <div className="text-muted-foreground">Total Points</div>
+                  <div className="text-xs text-green-600">
+                    Avg: {adminStats?.stats?.points?.avgPerUser || 0} per user
+                  </div>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Points Summary */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Points Economy Summary
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-4 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-600">
+                  {adminStats?.stats?.points?.totalEarned || 0}
+                </div>
+                <div className="text-sm text-muted-foreground">Total Earned</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-red-600">
+                  {adminStats?.stats?.points?.totalSpent || 0}
+                </div>
+                <div className="text-sm text-muted-foreground">Total Spent</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600">
+                  {adminStats?.stats?.points?.avgPerUser || 0}
+                </div>
+                <div className="text-sm text-muted-foreground">Average per User</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-purple-600">
+                  {adminStats?.stats?.points?.maxPoints || 0}
+                </div>
+                <div className="text-sm text-muted-foreground">Highest Balance</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Search */}
         <Card className="mb-8">

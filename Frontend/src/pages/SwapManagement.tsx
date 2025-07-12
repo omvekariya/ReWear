@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   ArrowRightLeft, 
   Coins, 
@@ -15,7 +19,11 @@ import {
   Package,
   User,
   Loader2,
-  TrendingUp
+  TrendingUp,
+  Truck,
+  Star,
+  AlertTriangle,
+  MessageSquare
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, type Swap } from "@/lib/api";
@@ -29,6 +37,12 @@ export const SwapManagement = () => {
   const [swaps, setSwaps] = useState<Swap[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
+  const [selectedSwap, setSelectedSwap] = useState<Swap | null>(null);
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputeDescription, setDisputeDescription] = useState("");
 
   useEffect(() => {
     if (user) {
@@ -40,7 +54,7 @@ export const SwapManagement = () => {
     try {
       setIsLoading(true);
       const response = await api.getSwaps();
-      setSwaps(response.data.items || []);
+      setSwaps(response.data?.swaps || []);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -81,6 +95,82 @@ export const SwapManagement = () => {
       toast({
         title: "Error",
         description: error.message || "Failed to reject swap",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleMarkShipped = async (swapId: string) => {
+    try {
+      await api.markShipped(swapId, trackingNumber);
+      toast({
+        title: "Item marked as shipped",
+        description: "Your item has been marked as shipped",
+      });
+      setTrackingNumber("");
+      setSelectedSwap(null);
+      fetchSwaps(); // Refresh the list
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to mark as shipped",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleMarkReceived = async (swapId: string) => {
+    try {
+      await api.markReceived(swapId);
+      toast({
+        title: "Item marked as received",
+        description: "You have confirmed receiving the item",
+      });
+      fetchSwaps(); // Refresh the list
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to mark as received",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRateSwap = async (swapId: string) => {
+    try {
+      await api.rateSwap(swapId, { rating, comment });
+      toast({
+        title: "Swap rated",
+        description: "Thank you for rating this swap",
+      });
+      setRating(5);
+      setComment("");
+      setSelectedSwap(null);
+      fetchSwaps(); // Refresh the list
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to rate swap",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRaiseDispute = async (swapId: string) => {
+    try {
+      await api.raiseDispute(swapId, { reason: disputeReason, description: disputeDescription });
+      toast({
+        title: "Dispute raised",
+        description: "Your dispute has been submitted for review",
+      });
+      setDisputeReason("");
+      setDisputeDescription("");
+      setSelectedSwap(null);
+      fetchSwaps(); // Refresh the list
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to raise dispute",
         variant: "destructive",
       });
     }
@@ -240,15 +330,258 @@ export const SwapManagement = () => {
                           )}
                           
                           {swap.status === 'accepted' && (
-                            <Button size="sm" variant="outline">
-                              Mark Shipped
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => setSelectedSwap(swap)}
+                                >
+                                  <Truck className="h-4 w-4 mr-1" />
+                                  Mark Shipped
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Mark Item as Shipped</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div>
+                                    <Label htmlFor="tracking">Tracking Number (optional)</Label>
+                                    <Input
+                                      id="tracking"
+                                      placeholder="Enter tracking number..."
+                                      value={trackingNumber}
+                                      onChange={(e) => setTrackingNumber(e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button 
+                                      variant="outline" 
+                                      onClick={() => {
+                                        setTrackingNumber("");
+                                        setSelectedSwap(null);
+                                      }}
+                                    >
+                                      Cancel
+                                    </Button>
+                                    <Button 
+                                      onClick={() => handleMarkShipped(swap._id)}
+                                    >
+                                      Mark Shipped
+                                    </Button>
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          )}
+                          
+                          {swap.status === 'accepted' && (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handleMarkReceived(swap._id)}
+                            >
+                              <CheckCircle className="h-4 w-4 mr-1" />
+                              Mark Received
                             </Button>
+                          )}
+                          
+                          {swap.status === 'completed' && !swap.initiatorRating && swap.initiator._id === user?._id && (
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => setSelectedSwap(swap)}
+                                >
+                                  <Star className="h-4 w-4 mr-1" />
+                                  Rate Swap
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Rate This Swap</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div>
+                                    <Label>Rating</Label>
+                                    <div className="flex gap-1 mt-2">
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <button
+                                          key={star}
+                                          type="button"
+                                          onClick={() => setRating(star)}
+                                          className={`text-2xl ${star <= rating ? 'text-yellow-400' : 'text-gray-300'}`}
+                                        >
+                                          ★
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <Label htmlFor="comment">Comment (optional)</Label>
+                                    <Textarea
+                                      id="comment"
+                                      placeholder="Share your experience..."
+                                      value={comment}
+                                      onChange={(e) => setComment(e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button 
+                                      variant="outline" 
+                                      onClick={() => {
+                                        setRating(5);
+                                        setComment("");
+                                        setSelectedSwap(null);
+                                      }}
+                                    >
+                                      Cancel
+                                    </Button>
+                                    <Button 
+                                      onClick={() => handleRateSwap(swap._id)}
+                                    >
+                                      Submit Rating
+                                    </Button>
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          )}
+                          
+                          {swap.status === 'completed' && !swap.recipientRating && swap.recipient._id === user?._id && (
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => setSelectedSwap(swap)}
+                                >
+                                  <Star className="h-4 w-4 mr-1" />
+                                  Rate Swap
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Rate This Swap</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div>
+                                    <Label>Rating</Label>
+                                    <div className="flex gap-1 mt-2">
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <button
+                                          key={star}
+                                          type="button"
+                                          onClick={() => setRating(star)}
+                                          className={`text-2xl ${star <= rating ? 'text-yellow-400' : 'text-gray-300'}`}
+                                        >
+                                          ★
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <Label htmlFor="comment">Comment (optional)</Label>
+                                    <Textarea
+                                      id="comment"
+                                      placeholder="Share your experience..."
+                                      value={comment}
+                                      onChange={(e) => setComment(e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button 
+                                      variant="outline" 
+                                      onClick={() => {
+                                        setRating(5);
+                                        setComment("");
+                                        setSelectedSwap(null);
+                                      }}
+                                    >
+                                      Cancel
+                                    </Button>
+                                    <Button 
+                                      onClick={() => handleRateSwap(swap._id)}
+                                    >
+                                      Submit Rating
+                                    </Button>
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          )}
+                          
+                          {(swap.status === 'accepted' || swap.status === 'completed') && (
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => setSelectedSwap(swap)}
+                                >
+                                  <AlertTriangle className="h-4 w-4 mr-1" />
+                                  Raise Dispute
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Raise a Dispute</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div>
+                                    <Label htmlFor="reason">Reason</Label>
+                                    <select
+                                      id="reason"
+                                      value={disputeReason}
+                                      onChange={(e) => setDisputeReason(e.target.value)}
+                                      className="w-full p-2 border rounded-md"
+                                    >
+                                      <option value="">Select a reason</option>
+                                      <option value="item-not-as-described">Item not as described</option>
+                                      <option value="damaged">Item damaged</option>
+                                      <option value="not-received">Item not received</option>
+                                      <option value="other">Other</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <Label htmlFor="description">Description</Label>
+                                    <Textarea
+                                      id="description"
+                                      placeholder="Please describe the issue..."
+                                      value={disputeDescription}
+                                      onChange={(e) => setDisputeDescription(e.target.value)}
+                                      rows={4}
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button 
+                                      variant="outline" 
+                                      onClick={() => {
+                                        setDisputeReason("");
+                                        setDisputeDescription("");
+                                        setSelectedSwap(null);
+                                      }}
+                                    >
+                                      Cancel
+                                    </Button>
+                                    <Button 
+                                      onClick={() => handleRaiseDispute(swap._id)}
+                                      disabled={!disputeReason || !disputeDescription}
+                                    >
+                                      Submit Dispute
+                                    </Button>
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
                           )}
                           
                           <Button 
                             size="sm" 
                             variant="outline"
-                            onClick={() => navigate(`/item/${swap.recipientItem._id}`)}
+                            onClick={() => navigate(`/swap-detail/${swap._id}`)}
                           >
                             <Eye className="h-4 w-4" />
                           </Button>

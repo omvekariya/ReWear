@@ -3,6 +3,9 @@ import { body, validationResult, query } from 'express-validator';
 import Item from '../models/Item.js';
 import { protect, optionalAuth } from '../middleware/auth.js';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
+import Swap from '../models/Swap.js';
+import User from '../models/User.js';
 dotenv.config();
 
 
@@ -225,10 +228,25 @@ router.post('/', protect, [
 
     const item = await Item.create(itemData);
 
-    // Update user stats
+    // Award points for listing an item (encourage participation)
+    const listingBonus = 10; // Base points for listing
+    
+    // Check if this is the user's first item
+    const userItemCount = await Item.countDocuments({ owner: req.user._id });
+    const firstItemBonus = userItemCount === 1 ? 25 : 0; // Bonus for first item
+    
+    const totalBonus = listingBonus + firstItemBonus;
+    
     await req.user.updateOne({
-      $inc: { 'stats.itemsListed': 1 }
+      $inc: { 
+        'stats.itemsListed': 1,
+        points: totalBonus,
+        'stats.totalPointsEarned': totalBonus
+      }
     });
+
+    // Check for milestones
+    await req.user.checkMilestones();
 
     res.status(201).json({
       success: true,
@@ -450,6 +468,168 @@ router.post('/:id/report', protect, [
     res.status(500).json({
       success: false,
       message: 'Server error while reporting item'
+    });
+  }
+});
+
+// @desc    Buy item with points
+// @route   POST /api/items/:id/buy
+// @access  Private
+router.post('/:id/buy', protect, async (req, res) => {
+  try {
+    const item = await Item.findById(req.params.id).populate('owner', 'name email');
+
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: 'Item not found'
+      });
+    }
+
+    // Check if item is available for purchase
+    if (item.status !== 'active') {
+      return res.status(400).json({
+        success: false,
+        message: 'Item is not available for purchase'
+      });
+    }
+
+    // Check if item is redeemable
+    if (!item.isRedeemable) {
+      return res.status(400).json({
+        success: false,
+        message: 'This item cannot be purchased with points'
+      });
+    }
+
+    // Check if user is trying to buy their own item
+    if (item.owner._id.toString() === req.user._id.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot buy your own item'
+      });
+    }
+
+    // Check if user has enough points
+    if (req.user.points < item.points) {
+      return res.status(400).json({
+        success: false,
+        message: 'Insufficient points for this purchase',
+        data: {
+          required: item.points,
+          available: req.user.points,
+          shortfall: item.points - req.user.points
+        }
+      });
+    }
+
+    // Start a transaction to ensure data consistency
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // Deduct points from buyer
+      await User.findByIdAndUpdate(req.user._id, {
+        $inc: { 
+          points: -item.points,
+          'stats.totalPointsSpent': item.points
+        }
+      }, { session });
+
+      // Add points to seller
+      await User.findByIdAndUpdate(item.owner._id, {
+        $inc: { 
+          points: item.points,
+          'stats.totalPointsEarned': item.points
+        }
+      }, { session });
+
+      // Mark item as sold
+      await Item.findByIdAndUpdate(item._id, { 
+        status: 'sold' 
+      }, { session });
+
+      // Create a purchase record (using swap model for consistency)
+      const purchase = new Swap({
+        initiator: req.user._id,
+        recipient: item.owner._id,
+        recipientItem: item._id,
+        type: 'redeem',
+        status: 'completed', // Direct purchase is immediately completed
+        points: item.points,
+        message: 'Direct purchase with points',
+        timeline: [{
+          action: 'created',
+          user: req.user._id,
+          details: 'Direct purchase with points'
+        }, {
+          action: 'completed',
+          user: req.user._id,
+          details: 'Purchase completed'
+        }]
+      });
+
+      await purchase.save({ session });
+
+      // Award completion bonus points to buyer
+      const completionBonus = 10; // Points for successful purchase
+      
+      // Check if this is the user's first purchase
+      const purchaseCount = await Swap.countDocuments({ 
+        initiator: req.user._id,
+        type: 'redeem',
+        status: 'completed'
+      }, { session });
+      
+      const firstPurchaseBonus = 25; // Bonus for first purchase
+      
+      if (purchaseCount === 1) {
+        await User.findByIdAndUpdate(req.user._id, {
+          $inc: { 
+            points: firstPurchaseBonus,
+            'stats.totalPointsEarned': firstPurchaseBonus
+          }
+        }, { session });
+      }
+
+      await session.commitTransaction();
+
+      // Populate the purchase for response
+      const populatePaths = [
+        { path: 'initiator', select: 'name avatar' },
+        { path: 'recipient', select: 'name avatar' },
+        { path: 'recipientItem', select: 'title images points' }
+      ];
+      
+      // Only populate initiatorItem if it exists (for swap type)
+      if (purchase.initiatorItem) {
+        populatePaths.push({ path: 'initiatorItem', select: 'title images points' });
+      }
+      
+      await purchase.populate(populatePaths);
+
+      res.json({
+        success: true,
+        message: 'Purchase completed successfully',
+        data: { 
+          purchase,
+          pointsSpent: item.points,
+          bonusEarned: purchaseCount === 1 ? firstPurchaseBonus : 0
+        }
+      });
+
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
+
+  } catch (error) {
+    console.error('Buy item error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while processing purchase'
     });
   }
 });

@@ -14,6 +14,9 @@ import { AddItem } from "./pages/AddItem";
 import { Admin } from "./pages/Admin";
 import { SwapPage } from "./pages/Swap";
 import { SwapManagement } from "./pages/SwapManagement";
+import { SwapDetail } from "./pages/SwapDetail";
+import { BuyPage } from "./pages/Buy";
+import { PurchaseConfirmation } from "./pages/PurchaseConfirmation";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -51,6 +54,30 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <SwapManagement />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/swap-detail/:id" 
+              element={
+                <ProtectedRoute>
+                  <SwapDetail />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/buy/:itemId" 
+              element={
+                <ProtectedRoute>
+                  <BuyPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/purchase-confirmation" 
+              element={
+                <ProtectedRoute>
+                  <PurchaseConfirmation />
                 </ProtectedRoute>
               } 
             />

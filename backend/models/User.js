@@ -72,8 +72,19 @@ const userSchema = new mongoose.Schema({
     itemsListed: { type: Number, default: 0 },
     swapsCompleted: { type: Number, default: 0 },
     totalPointsEarned: { type: Number, default: 0 },
-    totalPointsSpent: { type: Number, default: 0 }
-  }
+    totalPointsSpent: { type: Number, default: 0 },
+    referralsCount: { type: Number, default: 0 }
+  },
+  referralCode: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  referredBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  achievements: [String]
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -127,6 +138,70 @@ userSchema.methods.getPublicProfile = function() {
 userSchema.statics.findByEmail = function(email) {
   return this.findOne({ email: email.toLowerCase() });
 };
+
+// Instance method to generate referral code
+userSchema.methods.generateReferralCode = function() {
+  const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+  this.referralCode = code;
+  return this.save();
+};
+
+// Static method to find by referral code
+userSchema.statics.findByReferralCode = function(code) {
+  return this.findOne({ referralCode: code.toUpperCase() });
+};
+
+// Instance method to check and award milestones
+userSchema.methods.checkMilestones = async function() {
+  const milestones = [
+    { type: 'itemsListed', levels: [5, 10, 25, 50], points: [50, 100, 250, 500] },
+    { type: 'swapsCompleted', levels: [3, 10, 25, 50], points: [75, 200, 500, 1000] },
+    { type: 'totalPointsEarned', levels: [100, 500, 1000, 2500], points: [100, 250, 500, 1000] }
+  ];
+
+  let totalBonus = 0;
+  const achievements = [];
+
+  for (const milestone of milestones) {
+    const currentValue = this.stats[milestone.type] || 0;
+    
+    for (let i = 0; i < milestone.levels.length; i++) {
+      const level = milestone.levels[i];
+      const points = milestone.points[i];
+      
+      // Check if user just reached this milestone
+      if (currentValue >= level) {
+        const milestoneKey = `${milestone.type}_${level}`;
+        if (!this.achievements || !this.achievements.includes(milestoneKey)) {
+          totalBonus += points;
+          achievements.push({
+            type: milestone.type,
+            level: level,
+            points: points,
+            description: `Reached ${level} ${milestone.type.replace(/([A-Z])/g, ' $1').toLowerCase()}`
+          });
+          
+          // Mark milestone as achieved
+          if (!this.achievements) this.achievements = [];
+          this.achievements.push(milestoneKey);
+        }
+      }
+    }
+  }
+
+  if (totalBonus > 0) {
+    this.points += totalBonus;
+    this.stats.totalPointsEarned += totalBonus;
+    await this.save();
+  }
+
+  return { totalBonus, achievements };
+};
+
+// Add achievements field to schema
+userSchema.add({
+  achievements: [String]
+});
 
 const User = mongoose.model('User', userSchema);
 

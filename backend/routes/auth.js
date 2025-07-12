@@ -36,7 +36,7 @@ router.post('/register', [
       });
     }
 
-    const { name, email, password } = req.body;
+    const { name, email, password, referralCode } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findByEmail(email);
@@ -47,12 +47,49 @@ router.post('/register', [
       });
     }
 
+    // Handle referral
+    let referredBy = null;
+    if (referralCode) {
+      referredBy = await User.findByReferralCode(referralCode);
+      if (!referredBy) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid referral code'
+        });
+      }
+    }
+
     // Create user
     const user = await User.create({
       name,
       email,
-      password
+      password,
+      referredBy: referredBy?._id
     });
+
+    // Generate referral code for new user
+    await user.generateReferralCode();
+
+    // Award referral bonus
+    if (referredBy) {
+      const referralBonus = 25; // Points for successful referral
+      await User.findByIdAndUpdate(referredBy._id, {
+        $inc: { 
+          points: referralBonus,
+          'stats.totalPointsEarned': referralBonus,
+          'stats.referralsCount': 1
+        }
+      });
+
+      // Award welcome bonus to new user
+      const welcomeBonus = 50; // Points for new user
+      await User.findByIdAndUpdate(user._id, {
+        $inc: { 
+          points: welcomeBonus,
+          'stats.totalPointsEarned': welcomeBonus
+        }
+      });
+    }
 
     // Generate token
     const token = generateToken(user._id);
@@ -124,6 +161,21 @@ router.post('/login', [
       });
     }
 
+    // Check for daily login bonus
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const lastLogin = user.lastLogin ? new Date(user.lastLogin) : null;
+    const lastLoginDate = lastLogin ? new Date(lastLogin.setHours(0, 0, 0, 0)) : null;
+    
+    let loginBonus = 0;
+    if (!lastLoginDate || lastLoginDate.getTime() < today.getTime()) {
+      // Award daily login bonus
+      loginBonus = 5; // Points for daily login
+      user.points += loginBonus;
+      user.stats.totalPointsEarned += loginBonus;
+    }
+    
     // Update last login
     user.lastLogin = new Date();
     await user.save();
@@ -202,6 +254,18 @@ router.put('/profile', protect, [
     if (name) updateFields.name = name;
     if (bio !== undefined) updateFields.bio = bio;
     if (avatar) updateFields.avatar = avatar;
+
+    // Check for profile completion bonus
+    const currentUser = await User.findById(req.user._id);
+    const hadBio = currentUser.bio && currentUser.bio.trim().length > 0;
+    const hadAvatar = currentUser.avatar && currentUser.avatar.trim().length > 0;
+    
+    let profileBonus = 0;
+    if ((!hadBio && bio && bio.trim().length > 0) || (!hadAvatar && avatar)) {
+      profileBonus = 15; // Points for completing profile
+      updateFields.points = (currentUser.points || 0) + profileBonus;
+      updateFields['stats.totalPointsEarned'] = (currentUser.stats?.totalPointsEarned || 0) + profileBonus;
+    }
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
